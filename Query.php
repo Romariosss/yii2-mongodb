@@ -447,6 +447,11 @@ class Query extends Component implements QueryInterface
         }
     }
 
+    public function groupBy($idExpression, $fields)
+    {
+        
+    }
+
     /**
      * Composes condition from raw [[where]] value.
      * @return array conditions.
