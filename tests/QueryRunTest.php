@@ -38,6 +38,7 @@ class QueryRunTest extends TestCase
                     'height' => 100 + $i,
                     'url' => 'http://some.url/' . $i,
                 ],
+                'group' => $i % 3,
             ];
         }
         $collection->batchInsert($rows);
@@ -387,5 +388,20 @@ class QueryRunTest extends TestCase
         $this->assertArrayHasKey('name', $row);
         $this->assertArrayNotHasKey('address', $row);
         $this->assertArrayNotHasKey('_id', $row);
+    }
+
+    public function testGroupBy()
+    {
+        $connection = $this->getConnection();
+        $query = new Query;
+        $rows = $query->from('customer')
+            ->groupBy('$group', ['name','status'])
+            ->orderBy(['price' => SORT_ASC])
+            ->limit(1000)
+            ->all($connection);
+
+        $this->assertEquals(3, count($rows));
+        $this->assertEquals(3, $query->count('*', $connection));
+        //$this->assertEquals('name1', $rows[0]['name']);
     }
 }

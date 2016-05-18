@@ -10,6 +10,7 @@ namespace yii\mongodb;
 use yii\base\Component;
 use yii\db\QueryInterface;
 use yii\db\QueryTrait;
+use yii\helpers\ArrayHelper;
 use yii\helpers\Json;
 use Yii;
 
@@ -59,6 +60,10 @@ class Query extends Component implements QueryInterface
      * @see options()
      */
     public $options = [];
+    /**
+     * @var string|array group fields expressions
+     */
+    public $groupBy;
 
 
     /**
@@ -247,9 +252,73 @@ class Query extends Component implements QueryInterface
      */
     public function all($db = null)
     {
+        if($this->groupBy) {
+            return $this->populate($this->aggregateAll($db));
+        }
+
         $cursor = $this->buildCursor($db);
         $rows = $this->fetchRows($cursor, true, $this->indexBy);
         return $this->populate($rows);
+    }
+
+
+    protected function composeAggregatePipelines($db = null)
+    {
+        $collection = $this->getCollection($db);
+
+        $selectFields = [];
+        foreach ($this->select as $key => $value) {
+            if (is_numeric($key)) {
+                $selectFields[$value] = ['$first' =>  '$'.$value];
+            } else {
+                $selectFields[$key] = $value;
+            }
+        }
+
+        $pipelines = [];
+        if ($this->where !== null) {
+            $pipelines[] = ['$match' => $collection->buildCondition($this->where)];
+        }
+
+        $pipelines[] = [
+            '$group' => ArrayHelper::merge(
+                ['_id' => $this->groupBy ],
+                $selectFields
+            ),
+        ];
+
+        if (!empty($this->orderBy)) {
+            $pipelines[] = [
+                '$sort' => $this->composeSort(),
+            ];
+        }
+
+        return $pipelines;
+
+    }
+
+    protected function aggregateAll($db = null)
+    {
+
+        $collection = $this->getCollection($db);
+        $pipelines = $this->composeAggregatePipelines($db);
+
+        if(!empty($this->limit) && $this->limit >=0) {
+            $pipelines[] = [
+                '$limit' => $this->limit,
+            ];
+        }
+
+        if(!empty($this->offset) && $this->limit > 0) {
+            $pipelines[] = [
+                '$skip' => $this->offset,
+            ];
+        }
+
+        $result = $collection->aggregate($pipelines);
+
+        return $result;
+
     }
 
     /**
@@ -316,6 +385,20 @@ class Query extends Component implements QueryInterface
      */
     public function count($q = '*', $db = null)
     {
+        if (!empty($this->groupBy)) {
+            $pipelines = $this->composeAggregatePipelines($db);
+            $pipelines[] = [
+                '$group' => ArrayHelper::merge(
+                    ['_id' => null],
+                    ['total' => ['$sum' => 1]]
+                ),
+            ];
+            $collection = $this->getCollection($db);
+            $result = $collection->aggregate($pipelines);
+
+            return ArrayHelper::getValue($result,'0.total' );
+        }
+
         $cursor = $this->buildCursor($db);
         $token = 'find.count(' . Json::encode($cursor->info()) . ')';
         Yii::info($token, __METHOD__);
@@ -447,9 +530,12 @@ class Query extends Component implements QueryInterface
         }
     }
 
-    public function groupBy($idExpression, $fields)
+    public function groupBy($idExpression, $fields = [])
     {
+        $this->groupBy = $idExpression;
+        $this->select($fields);
         
+        return $this;
     }
 
     /**
