@@ -401,6 +401,7 @@ class QueryRunTest extends TestCase
             ->all($connection);
 
         $this->assertEquals(3, count($rows));
+        $this->assertEquals(3, $query->count('*', $connection));
         //$this->assertEquals('name1', $rows[0]['name']);
     }
 }
