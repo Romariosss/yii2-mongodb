@@ -292,13 +292,13 @@ class Query extends Component implements QueryInterface
             ];
         }
 
-        if(!empty($this->limit)) {
+        if(!empty($this->limit) && $this->limit >=0) {
             $pipelines[] = [
                 '$limit' => $this->limit,
             ];
         }
 
-        if(!empty($this->offset)) {
+        if(!empty($this->offset) && $this->limit >=0) {
             $pipelines[] = [
                 '$offset' => $this->offset,
             ];
