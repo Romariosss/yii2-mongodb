@@ -279,7 +279,7 @@ class Query extends Component implements QueryInterface
         if ($this->where !== null) {
             $pipelines[] = ['$match' => $collection->buildCondition($this->where)];
         }
-        
+
         $pipelines[] = [
             '$group' => ArrayHelper::merge(
                 ['_id' => $this->groupBy ],
@@ -309,9 +309,9 @@ class Query extends Component implements QueryInterface
             ];
         }
 
-        if(!empty($this->offset) && $this->limit >=0) {
+        if(!empty($this->offset) && $this->limit > 0) {
             $pipelines[] = [
-                '$offset' => $this->offset,
+                '$skip' => $this->offset,
             ];
         }
 
