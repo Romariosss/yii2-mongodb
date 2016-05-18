@@ -261,7 +261,7 @@ class Query extends Component implements QueryInterface
         return $this->populate($rows);
     }
 
-    protected function aggregateAll($db = null)
+    protected function composeAggregatePipelines($db = null)
     {
         $collection = $this->getCollection($db);
 
@@ -277,10 +277,11 @@ class Query extends Component implements QueryInterface
         $pipelines = [];
         if ($this->where !== null) {
             $pipelines[] = ['$match' => $collection->buildCondition($this->where)];
-        }        
+        }
+
         $pipelines[] = [
             '$group' => ArrayHelper::merge(
-                ['_id' => $this->groupBy ], 
+                ['_id' => $this->groupBy ],
                 $selectFields
             ),
         ];
@@ -302,6 +303,16 @@ class Query extends Component implements QueryInterface
                 '$offset' => $this->offset,
             ];
         }
+
+        return $pipelines;
+
+    }
+
+    protected function aggregateAll($db = null)
+    {
+
+        $collection = $this->getCollection($db);
+        $pipelines = $this->composeAggregatePipelines($db);
 
         $result = $collection->aggregate($pipelines);
 
@@ -373,6 +384,20 @@ class Query extends Component implements QueryInterface
      */
     public function count($q = '*', $db = null)
     {
+        if ($this->groupBy) {
+            $pipelines = $this->composeAggregatePipelines($db);
+            $pipelines[] = [
+                '$group' => ArrayHelper::merge(
+                    ['_id' => null],
+                    ['total' => ['$sum' => 1]]
+                ),
+            ];
+            $collection = $this->getCollection($db);
+            $result = $collection->aggregate($pipelines);
+
+            return ArrayHelper::getValue($result,'0.total' );
+        }
+
         $cursor = $this->buildCursor($db);
         $token = 'find.count(' . Json::encode($cursor->info()) . ')';
         Yii::info($token, __METHOD__);
