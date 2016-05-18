@@ -261,6 +261,7 @@ class Query extends Component implements QueryInterface
         return $this->populate($rows);
     }
 
+
     protected function composeAggregatePipelines($db = null)
     {
         $collection = $this->getCollection($db);
@@ -278,7 +279,7 @@ class Query extends Component implements QueryInterface
         if ($this->where !== null) {
             $pipelines[] = ['$match' => $collection->buildCondition($this->where)];
         }
-
+        
         $pipelines[] = [
             '$group' => ArrayHelper::merge(
                 ['_id' => $this->groupBy ],
@@ -292,6 +293,16 @@ class Query extends Component implements QueryInterface
             ];
         }
 
+        return $pipelines;
+
+    }
+
+    protected function aggregateAll($db = null)
+    {
+
+        $collection = $this->getCollection($db);
+        $pipelines = $this->composeAggregatePipelines($db);
+
         if(!empty($this->limit) && $this->limit >=0) {
             $pipelines[] = [
                 '$limit' => $this->limit,
@@ -303,16 +314,6 @@ class Query extends Component implements QueryInterface
                 '$offset' => $this->offset,
             ];
         }
-
-        return $pipelines;
-
-    }
-
-    protected function aggregateAll($db = null)
-    {
-
-        $collection = $this->getCollection($db);
-        $pipelines = $this->composeAggregatePipelines($db);
 
         $result = $collection->aggregate($pipelines);
 
