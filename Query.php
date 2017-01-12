@@ -340,6 +340,9 @@ class Query extends Component implements QueryInterface
     protected function composeAggregatePipelines($db = null)
     {
         $collection = $this->getCollection($db);
+        if ($db === null) {
+            $db = Yii::$app->get('mongodb');
+        }
 
         $selectFields = [];
         foreach ($this->select as $key => $value) {
