@@ -2,9 +2,9 @@
 
 namespace yiiunit\extensions\mongodb;
 
-/**
- * @group mongodb
- */
+use MongoDB\BSON\ObjectID;
+use MongoDB\Driver\Cursor;
+
 class CollectionTest extends TestCase
 {
     protected function tearDown()
@@ -20,15 +20,15 @@ class CollectionTest extends TestCase
     {
         $collectionName = 'customer';
         $collection = $this->getConnection()->getCollection($collectionName);
-        $this->assertEquals($collectionName, $collection->getName());
-        $this->assertEquals($this->mongoDbConfig['defaultDatabaseName'] . '.' . $collectionName, $collection->getFullName());
+        $this->assertEquals($collectionName, $collection->name);
+        $this->assertEquals($this->getConnection()->getDefaultDatabaseName() . '.' . $collectionName, $collection->getFullName());
     }
 
     public function testFind()
     {
         $collection = $this->getConnection()->getCollection('customer');
         $cursor = $collection->find();
-        $this->assertTrue($cursor instanceof \MongoCursor);
+        $this->assertTrue($cursor instanceof Cursor);
     }
 
     public function testInsert()
@@ -39,8 +39,28 @@ class CollectionTest extends TestCase
             'address' => 'customer 1 address',
         ];
         $id = $collection->insert($data);
-        $this->assertTrue($id instanceof \MongoId);
+        $this->assertTrue($id instanceof ObjectID);
         $this->assertNotEmpty($id->__toString());
+    }
+
+    /**
+     * @depends testInsert
+     * @depends testFind
+     */
+    public function testFindOne()
+    {
+        $collection = $this->getConnection()->getCollection('customer');
+        $data = [
+            'name' => 'customer 1',
+            'address' => 'customer 1 address',
+        ];
+        $id = $collection->insert($data);
+
+        $row = $collection->findOne(['_id' => $id]);
+        $this->assertEquals($data['name'], $row['name']);
+
+        $row = $collection->findOne(['_id' => 'unexisting-id']);
+        $this->assertNull($row);
     }
 
     /**
@@ -82,9 +102,9 @@ class CollectionTest extends TestCase
             ],
         ];
         $insertedRows = $collection->batchInsert($rows);
-        $this->assertTrue($insertedRows[0]['_id'] instanceof \MongoId);
-        $this->assertTrue($insertedRows[1]['_id'] instanceof \MongoId);
-        $this->assertEquals(count($rows), $collection->find()->count());
+        $this->assertTrue($insertedRows[0]['_id'] instanceof ObjectID);
+        $this->assertTrue($insertedRows[1]['_id'] instanceof ObjectID);
+        $this->assertCount(count($rows), $collection->find()->toArray());
     }
 
     public function testSave()
@@ -95,7 +115,7 @@ class CollectionTest extends TestCase
             'address' => 'customer 1 address',
         ];
         $id = $collection->save($data);
-        $this->assertTrue($id instanceof \MongoId);
+        $this->assertTrue($id instanceof ObjectID);
         $this->assertNotEmpty($id->__toString());
     }
 
@@ -111,6 +131,7 @@ class CollectionTest extends TestCase
         ];
         $newId = $collection->save($data);
 
+        $data['_id'] = $newId;
         $updatedId = $collection->save($data);
         $this->assertEquals($newId, $updatedId, 'Unable to update data!');
 
@@ -244,7 +265,6 @@ class CollectionTest extends TestCase
         $result = $collection->findAndModify(
             ['name' => 'customer 2'],
             ['$set' => ['status' => 2]],
-            [],
             ['new' => true]
         );
         $this->assertEquals('customer 2', $result['name']);
@@ -258,7 +278,6 @@ class CollectionTest extends TestCase
         $result = $collection->findAndModify(
             ['name' => 'customer 2'],
             $data,
-            [],
             ['new' => true]
         );
         $this->assertEquals('customer 3', $result['name']);
@@ -377,10 +396,10 @@ class CollectionTest extends TestCase
         $collection = $this->getConnection()->getCollection('customer');
         $columns = [
             'name',
-            'status' => \MongoCollection::DESCENDING,
+            'status' => SORT_DESC
         ];
         $this->assertTrue($collection->createIndex($columns));
-        $indexInfo = $collection->mongoCollection->getIndexInfo();
+        $indexInfo = $collection->listIndexes();
         $this->assertEquals(2, count($indexInfo));
     }
 
@@ -393,7 +412,7 @@ class CollectionTest extends TestCase
 
         $collection->createIndex('name');
         $this->assertTrue($collection->dropIndex('name'));
-        $indexInfo = $collection->mongoCollection->getIndexInfo();
+        $indexInfo = $collection->listIndexes();
         $this->assertEquals(1, count($indexInfo));
 
         $this->setExpectedException('\yii\mongodb\Exception');
@@ -408,46 +427,44 @@ class CollectionTest extends TestCase
         $collection = $this->getConnection()->getCollection('customer');
         $collection->createIndex('name');
         $this->assertEquals(2, $collection->dropAllIndexes());
-        $indexInfo = $collection->mongoCollection->getIndexInfo();
+        $indexInfo = $collection->listIndexes();
         $this->assertEquals(1, count($indexInfo));
     }
 
-    /**
-     * @depends testBatchInsert
-     * @depends testCreateIndex
-     */
-    public function testFullTextSearch()
+    public function testCreateIndexes()
     {
-        $serverVersion = $this->getServerVersion();
-        if (version_compare('2.4', $serverVersion, '<') || version_compare('3.0', $serverVersion, '>=')) {
-            $this->markTestSkipped("Mongo Server >=2.4 and <3.0 required.");
-        }
-
         $collection = $this->getConnection()->getCollection('customer');
+        $columns = [
+            ['key' => ['name']],
+            ['key' => ['status' => SORT_DESC]]
+        ];
+        $this->assertTrue($collection->createIndexes($columns));
+        $indexInfo = $collection->listIndexes();
+        $this->assertEquals(3, count($indexInfo));
+    }
 
-        $rows = [
+    /**
+     * @depends testCreateIndexes
+     */
+    public function testDropIndexes()
+    {
+        $collection = $this->getConnection()->getCollection('customer');
+        $columns = [
             [
-                'name' => 'customer 1',
-                'status' => 1,
-                'amount' => 100,
+                'key' => ['name'],
+                'name' => 'test_index'
             ],
             [
-                'name' => 'some customer',
-                'status' => 1,
-                'amount' => 200,
-            ],
-            [
-                'name' => 'no search keyword',
-                'status' => 1,
-                'amount' => 200,
+                'key' => ['status'],
+                'name' => 'to_be_dropped'
             ],
         ];
-        $collection->batchInsert($rows);
-        $collection->createIndex(['name' => 'text']);
+        $collection->createIndexes($columns);
 
-        $result = $collection->fullTextSearch('customer');
-        $this->assertNotEmpty($result);
-        $this->assertCount(2, $result);
+        $collection->dropIndexes('to_be_dropped');
+
+        $indexInfo = $collection->listIndexes();
+        $this->assertEquals(2, count($indexInfo));
     }
 
     /**
@@ -465,13 +482,13 @@ class CollectionTest extends TestCase
         $id = $collection->insert($data);
 
         $cursor = $collection->find(['_id' => (string) $id]);
-        $this->assertTrue($cursor instanceof \MongoCursor);
-        $row = $cursor->getNext();
+        $this->assertTrue($cursor instanceof Cursor);
+        $row = current($cursor->toArray());
         $this->assertEquals($id, $row['_id']);
 
         $cursor = $collection->find(['_id' => 'fake']);
-        $this->assertTrue($cursor instanceof \MongoCursor);
-        $this->assertEquals(0, $cursor->count());
+        $this->assertTrue($cursor instanceof Cursor);
+        $this->assertCount(0, $cursor->toArray());
     }
 
     /**
@@ -487,10 +504,10 @@ class CollectionTest extends TestCase
         $data = [
             'name' => 'customer 1',
             'address' => 'customer 1 address',
-            'binData' => new \MongoBinData(file_get_contents($fileName), 2),
+            'binData' => new \MongoDB\BSON\Binary(file_get_contents($fileName), 2),
         ];
         $id = $collection->insert($data);
-        $this->assertTrue($id instanceof \MongoId);
+        $this->assertTrue($id instanceof ObjectID);
         $this->assertNotEmpty($id->__toString());
     }
 

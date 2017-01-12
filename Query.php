@@ -23,7 +23,7 @@ use Yii;
  * For example,
  *
  * ```php
- * $query = new Query;
+ * $query = new Query();
  * // compose the query
  * $query->select(['name', 'status'])
  *     ->from('customer')
@@ -56,7 +56,7 @@ class Query extends Component implements QueryInterface
     public $from;
     /**
      * @var array cursor options in format: optionKey => optionValue
-     * @see \MongoCursor::addOption()
+     * @see \MongoDB\Driver\Cursor::addOption()
      * @see options()
      */
     public $options = [];
@@ -174,42 +174,54 @@ class Query extends Component implements QueryInterface
     }
 
     /**
-     * Builds the Mongo cursor for this query.
-     * @param Connection $db the database connection used to execute the query.
-     * @return \MongoCursor mongo cursor instance.
+     * Prepares for query building.
+     * This method is called before actual query composition, e.g. building cursor, count etc.
+     * You may override this method to do some final preparation work before query execution.
+     * @return $this a prepared query instance.
+     * @since 2.1.3
      */
-    protected function buildCursor($db = null)
+    public function prepare()
     {
-        $cursor = $this->getCollection($db)->find($this->composeCondition(), $this->composeSelectFields());
-        if (!empty($this->orderBy)) {
-            $cursor->sort($this->composeSort());
-        }
-        $cursor->limit($this->limit);
-        $cursor->skip($this->offset);
+        return $this;
+    }
 
-        foreach ($this->options as $key => $value) {
-            $cursor->addOption($key, $value);
+    /**
+     * Builds the MongoDB cursor for this query.
+     * @param Connection $db the MongoDB connection used to execute the query.
+     * @return \MongoDB\Driver\Cursor mongo cursor instance.
+     */
+    public function buildCursor($db = null)
+    {
+        $this->prepare();
+
+        $options = $this->options;
+        if (!empty($this->orderBy)) {
+            $options['sort'] = $this->orderBy;
         }
+        $options['limit'] = $this->limit;
+        $options['skip'] = $this->offset;
+
+        $cursor = $this->getCollection($db)->find($this->composeCondition(), $this->select, $options);
 
         return $cursor;
     }
 
     /**
      * Fetches rows from the given Mongo cursor.
-     * @param \MongoCursor $cursor Mongo cursor instance to fetch data from.
-     * @param boolean $all whether to fetch all rows or only first one.
+     * @param \MongoDB\Driver\Cursor $cursor Mongo cursor instance to fetch data from.
+     * @param bool $all whether to fetch all rows or only first one.
      * @param string|callable $indexBy the column name or PHP callback,
      * by which the query results should be indexed by.
      * @throws Exception on failure.
-     * @return array|boolean result.
+     * @return array|bool result.
      */
     protected function fetchRows($cursor, $all = true, $indexBy = null)
     {
-        $token = 'find(' . Json::encode($cursor->info()) . ')';
+        $token = 'fetch cursor id = ' . $cursor->getId();
         Yii::info($token, __METHOD__);
         try {
             Yii::beginProfile($token, __METHOD__);
-            $result = $this->fetchRowsInternal($cursor, $all, $indexBy);
+            $result = $this->fetchRowsInternal($cursor, $all);
             Yii::endProfile($token, __METHOD__);
 
             return $result;
@@ -220,13 +232,12 @@ class Query extends Component implements QueryInterface
     }
 
     /**
-     * @param \MongoCursor $cursor Mongo cursor instance to fetch data from.
-     * @param boolean $all whether to fetch all rows or only first one.
-     * @param string|callable $indexBy value to index by.
-     * @return array|boolean result.
+     * @param \MongoDB\Driver\Cursor $cursor Mongo cursor instance to fetch data from.
+     * @param bool $all whether to fetch all rows or only first one.
+     * @return array|bool result.
      * @see Query::fetchRows()
      */
-    protected function fetchRowsInternal($cursor, $all, $indexBy)
+    protected function fetchRowsInternal($cursor, $all)
     {
         $result = [];
         if ($all) {
@@ -234,7 +245,7 @@ class Query extends Component implements QueryInterface
                 $result[] = $row;
             }
         } else {
-            if ($row = $cursor->getNext()) {
+            if ($row = current($cursor->toArray())) {
                 $result = $row;
             } else {
                 $result = false;
@@ -242,6 +253,67 @@ class Query extends Component implements QueryInterface
         }
 
         return $result;
+    }
+
+    /**
+     * Starts a batch query.
+     *
+     * A batch query supports fetching data in batches, which can keep the memory usage under a limit.
+     * This method will return a [[BatchQueryResult]] object which implements the `Iterator` interface
+     * and can be traversed to retrieve the data in batches.
+     *
+     * For example,
+     *
+     * ```php
+     * $query = (new Query)->from('user');
+     * foreach ($query->batch() as $rows) {
+     *     // $rows is an array of 10 or fewer rows from user collection
+     * }
+     * ```
+     *
+     * @param int $batchSize the number of records to be fetched in each batch.
+     * @param Connection $db the MongoDB connection. If not set, the "mongodb" application component will be used.
+     * @return BatchQueryResult the batch query result. It implements the `Iterator` interface
+     * and can be traversed to retrieve the data in batches.
+     * @since 2.1
+     */
+    public function batch($batchSize = 100, $db = null)
+    {
+        return Yii::createObject([
+            'class' => BatchQueryResult::className(),
+            'query' => $this,
+            'batchSize' => $batchSize,
+            'db' => $db,
+            'each' => false,
+        ]);
+    }
+
+    /**
+     * Starts a batch query and retrieves data row by row.
+     * This method is similar to [[batch()]] except that in each iteration of the result,
+     * only one row of data is returned. For example,
+     *
+     * ```php
+     * $query = (new Query)->from('user');
+     * foreach ($query->each() as $row) {
+     * }
+     * ```
+     *
+     * @param int $batchSize the number of records to be fetched in each batch.
+     * @param Connection $db the MongoDB connection. If not set, the "mongodb" application component will be used.
+     * @return BatchQueryResult the batch query result. It implements the `Iterator` interface
+     * and can be traversed to retrieve the data in batches.
+     * @since 2.1
+     */
+    public function each($batchSize = 100, $db = null)
+    {
+        return Yii::createObject([
+            'class' => BatchQueryResult::className(),
+            'query' => $this,
+            'batchSize' => $batchSize,
+            'db' => $db,
+            'each' => true,
+        ]);
     }
 
     /**
@@ -256,6 +328,9 @@ class Query extends Component implements QueryInterface
             return $this->populate($this->aggregateAll($db));
         }
 
+        if (!empty($this->emulateExecution)) {
+            return [];
+        }
         $cursor = $this->buildCursor($db);
         $rows = $this->fetchRows($cursor, true, $this->indexBy);
         return $this->populate($rows);
@@ -349,13 +424,96 @@ class Query extends Component implements QueryInterface
      * Executes the query and returns a single row of result.
      * @param Connection $db the Mongo connection used to execute the query.
      * If this parameter is not given, the `mongodb` application component will be used.
-     * @return array|boolean the first row (in terms of an array) of the query result. False is returned if the query
+     * @return array|false the first row (in terms of an array) of the query result. `false` is returned if the query
      * results in nothing.
      */
     public function one($db = null)
     {
+        if (!empty($this->emulateExecution)) {
+            return false;
+        }
         $cursor = $this->buildCursor($db);
         return $this->fetchRows($cursor, false);
+    }
+
+    /**
+     * Returns the query result as a scalar value.
+     * The value returned will be the first column in the first row of the query results.
+     * Column `_id` will be automatically excluded from select fields, if [[select]] is not empty and
+     * `_id` is not selected explicitly.
+     * @param Connection $db the MongoDB connection used to generate the query.
+     * If this parameter is not given, the `mongodb` application component will be used.
+     * @return string|null|false the value of the first column in the first row of the query result.
+     * `false` is returned if the query result is empty.
+     * @since 2.1.2
+     */
+    public function scalar($db = null)
+    {
+        if (!empty($this->emulateExecution)) {
+            return null;
+        }
+
+        $originSelect = (array)$this->select;
+        if (!isset($originSelect['_id']) && array_search('_id', $originSelect, true) === false) {
+            $this->select['_id'] = false;
+        }
+
+        $cursor = $this->buildCursor($db);
+        $row = $this->fetchRows($cursor, false);
+
+        if (empty($row)) {
+            return false;
+        }
+
+        return reset($row);
+    }
+
+    /**
+     * Executes the query and returns the first column of the result.
+     * Column `_id` will be automatically excluded from select fields, if [[select]] is not empty and
+     * `_id` is not selected explicitly.
+     * @param Connection $db the MongoDB connection used to generate the query.
+     * If this parameter is not given, the `mongodb` application component will be used.
+     * @return array the first column of the query result. An empty array is returned if the query results in nothing.
+     * @since 2.1.2
+     */
+    public function column($db = null)
+    {
+        if (!empty($this->emulateExecution)) {
+            return [];
+        }
+
+        $originSelect = (array)$this->select;
+        if (!isset($originSelect['_id']) && array_search('_id', $originSelect, true) === false) {
+            $this->select['_id'] = false;
+        }
+        if (is_string($this->indexBy) && $originSelect && count($originSelect) === 1) {
+            $this->select[] = $this->indexBy;
+        }
+
+        $cursor = $this->buildCursor($db);
+        $rows = $this->fetchRows($cursor, true);
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $results = [];
+        foreach ($rows as $row) {
+            $value = reset($row);
+
+            if ($this->indexBy === null) {
+                $results[] = $value;
+            } else {
+                if ($this->indexBy instanceof \Closure) {
+                    $results[call_user_func($this->indexBy, $row)] = $value;
+                } else {
+                    $results[$row[$this->indexBy]] = $value;
+                }
+            }
+        }
+
+        return $results;
     }
 
     /**
@@ -367,12 +525,19 @@ class Query extends Component implements QueryInterface
      */
     public function modify($update, $options = [], $db = null)
     {
-        $collection = $this->getCollection($db);
-        if (!empty($this->orderBy)) {
-            $options['sort'] = $this->composeSort();
+        if (!empty($this->emulateExecution)) {
+            return null;
         }
 
-        return $collection->findAndModify($this->composeCondition(), $update, $this->composeSelectFields(), $options);
+        $this->prepare();
+
+        $collection = $this->getCollection($db);
+        if (!empty($this->orderBy)) {
+            $options['sort'] = $this->orderBy;
+        }
+
+        $options['fields'] = $this->select;
+        return $collection->findAndModify($this->composeCondition(), $update, $options);
     }
 
     /**
@@ -380,7 +545,7 @@ class Query extends Component implements QueryInterface
      * @param string $q kept to match [[QueryInterface]], its value is ignored.
      * @param Connection $db the Mongo connection used to execute the query.
      * If this parameter is not given, the `mongodb` application component will be used.
-     * @return integer number of records
+     * @return int number of records
      * @throws Exception on failure.
      */
     public function count($q = '*', $db = null)
@@ -412,17 +577,27 @@ class Query extends Component implements QueryInterface
             Yii::endProfile($token, __METHOD__);
             throw new Exception($e->getMessage(), (int) $e->getCode(), $e);
         }
+        $this->prepare();
+        $collection = $this->getCollection($db);
+        return $collection->count($this->where, $this->options);
     }
 
     /**
      * Returns a value indicating whether the query result contains any row of data.
      * @param Connection $db the Mongo connection used to execute the query.
      * If this parameter is not given, the `mongodb` application component will be used.
-     * @return boolean whether the query result contains any row of data.
+     * @return bool whether the query result contains any row of data.
      */
     public function exists($db = null)
     {
-        return $this->one($db) !== null;
+        if (!empty($this->emulateExecution)) {
+            return false;
+        }
+        $cursor = $this->buildCursor($db);
+        foreach ($cursor as $row) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -431,10 +606,13 @@ class Query extends Component implements QueryInterface
      * Make sure you properly quote column names in the expression.
      * @param Connection $db the Mongo connection used to execute the query.
      * If this parameter is not given, the `mongodb` application component will be used.
-     * @return integer the sum of the specified column values
+     * @return int the sum of the specified column values
      */
     public function sum($q, $db = null)
     {
+        if (!empty($this->emulateExecution)) {
+            return 0;
+        }
         return $this->aggregate($q, 'sum', $db);
     }
 
@@ -444,10 +622,13 @@ class Query extends Component implements QueryInterface
      * Make sure you properly quote column names in the expression.
      * @param Connection $db the Mongo connection used to execute the query.
      * If this parameter is not given, the `mongodb` application component will be used.
-     * @return integer the average of the specified column values.
+     * @return int the average of the specified column values.
      */
     public function average($q, $db = null)
     {
+        if (!empty($this->emulateExecution)) {
+            return 0;
+        }
         return $this->aggregate($q, 'avg', $db);
     }
 
@@ -457,7 +638,7 @@ class Query extends Component implements QueryInterface
      * Make sure you properly quote column names in the expression.
      * @param Connection $db the database connection used to generate the SQL statement.
      * If this parameter is not given, the `db` application component will be used.
-     * @return integer the minimum of the specified column values.
+     * @return int the minimum of the specified column values.
      */
     public function min($q, $db = null)
     {
@@ -470,7 +651,7 @@ class Query extends Component implements QueryInterface
      * Make sure you properly quote column names in the expression.
      * @param Connection $db the Mongo connection used to execute the query.
      * If this parameter is not given, the `mongodb` application component will be used.
-     * @return integer the maximum of the specified column values.
+     * @return int the maximum of the specified column values.
      */
     public function max($q, $db = null)
     {
@@ -482,14 +663,19 @@ class Query extends Component implements QueryInterface
      * @param string $column column name.
      * @param string $operator aggregation operator.
      * @param Connection $db the database connection used to execute the query.
-     * @return integer aggregation result.
+     * @return int aggregation result.
      */
     protected function aggregate($column, $operator, $db)
     {
+        if (!empty($this->emulateExecution)) {
+            return null;
+        }
+
+        $this->prepare();
         $collection = $this->getCollection($db);
         $pipelines = [];
         if ($this->where !== null) {
-            $pipelines[] = ['$match' => $collection->buildCondition($this->where)];
+            $pipelines[] = ['$match' => $this->where];
         }
         $pipelines[] = [
             '$group' => [
@@ -502,9 +688,8 @@ class Query extends Component implements QueryInterface
         $result = $collection->aggregate($pipelines);
         if (array_key_exists(0, $result)) {
             return $result[0]['total'];
-        } else {
-            return 0;
         }
+        return null;
     }
 
     /**
@@ -516,6 +701,11 @@ class Query extends Component implements QueryInterface
      */
     public function distinct($q, $db = null)
     {
+        if (!empty($this->emulateExecution)) {
+            return [];
+        }
+
+        $this->prepare();
         $collection = $this->getCollection($db);
         if ($this->where !== null) {
             $condition = $this->where;
@@ -525,16 +715,15 @@ class Query extends Component implements QueryInterface
         $result = $collection->distinct($q, $condition);
         if ($result === false) {
             return [];
-        } else {
-            return $result;
         }
+        return $result;
     }
 
     public function groupBy($idExpression, $fields = [])
     {
         $this->groupBy = $idExpression;
         $this->select($fields);
-        
+
         return $this;
     }
 
@@ -546,49 +735,7 @@ class Query extends Component implements QueryInterface
     {
         if ($this->where === null) {
             return [];
-        } else {
-            return $this->where;
         }
-    }
-
-    /**
-     * Composes select fields from raw [[select]] value.
-     * @return array select fields.
-     */
-    private function composeSelectFields()
-    {
-        $selectFields = [];
-        if (!empty($this->select)) {
-            foreach ($this->select as $key => $value) {
-                if (is_numeric($key)) {
-                    $selectFields[$value] = true;
-                } else {
-                    $selectFields[$key] = $value;
-                }
-            }
-        }
-        return $selectFields;
-    }
-
-    /**
-     * Composes sort specification from raw [[orderBy]] value.
-     * @return array sort specification.
-     */
-    private function composeSort()
-    {
-        $sort = [];
-        foreach ($this->orderBy as $fieldName => $sortOrder) {
-            switch ($sortOrder) {
-                case SORT_ASC:
-                    $sort[$fieldName] = \MongoCollection::ASCENDING;
-                    break;
-                case SORT_DESC:
-                    $sort[$fieldName] = \MongoCollection::DESCENDING;
-                    break;
-                default:
-                    $sort[$fieldName] = $sortOrder;
-            }
-        }
-        return $sort;
+        return $this->where;
     }
 }

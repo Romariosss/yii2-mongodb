@@ -2,11 +2,9 @@
 
 namespace yiiunit\extensions\mongodb;
 
+use MongoDB\BSON\ObjectID;
 use yii\mongodb\Query;
 
-/**
- * @group mongodb
- */
 class QueryRunTest extends TestCase
 {
     protected function setUp()
@@ -49,7 +47,7 @@ class QueryRunTest extends TestCase
     public function testAll()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')->all($connection);
         $this->assertEquals(10, count($rows));
     }
@@ -57,7 +55,7 @@ class QueryRunTest extends TestCase
     public function testDirectMatch()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where(['name' => 'name1'])
             ->all($connection);
@@ -68,7 +66,7 @@ class QueryRunTest extends TestCase
     public function testIndexBy()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->indexBy('name')
             ->all($connection);
@@ -79,7 +77,7 @@ class QueryRunTest extends TestCase
     public function testInCondition()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where([
                 'name' => ['name1', 'name5']
@@ -94,13 +92,13 @@ class QueryRunTest extends TestCase
     {
         $connection = $this->getConnection();
 
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where(['not in', 'name', ['name1', 'name5']])
             ->all($connection);
         $this->assertEquals(8, count($rows));
 
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where(['not in', 'name', ['name1']])
             ->all($connection);
@@ -133,7 +131,7 @@ class QueryRunTest extends TestCase
     public function testOrCondition()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where(['name' => 'name1'])
             ->orWhere(['address' => 'address5'])
@@ -146,7 +144,7 @@ class QueryRunTest extends TestCase
     public function testCombinedInAndCondition()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where([
                 'name' => ['name1', 'name5']
@@ -160,7 +158,7 @@ class QueryRunTest extends TestCase
     public function testCombinedInLikeAndCondition()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where([
                 'name' => ['name1', 'name5', 'name10']
@@ -175,7 +173,7 @@ class QueryRunTest extends TestCase
     public function testNestedCombinedInAndCondition()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where([
                 'and',
@@ -197,13 +195,13 @@ class QueryRunTest extends TestCase
     {
         $connection = $this->getConnection();
 
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->orderBy(['name' => SORT_DESC])
             ->all($connection);
         $this->assertEquals('name9', $rows[0]['name']);
 
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->orderBy(['avatar.height' => SORT_DESC])
             ->all($connection);
@@ -213,9 +211,9 @@ class QueryRunTest extends TestCase
     public function testMatchPlainId()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $row = $query->from('customer')->one($connection);
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where(['_id' => $row['_id']->__toString()])
             ->all($connection);
@@ -225,7 +223,7 @@ class QueryRunTest extends TestCase
     public function testRegex()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where(['REGEX', 'name', '/me1/'])
             ->all($connection);
@@ -238,7 +236,7 @@ class QueryRunTest extends TestCase
     {
         $connection = $this->getConnection();
 
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->where(['LIKE', 'name', 'me1'])
             ->all($connection);
@@ -246,7 +244,7 @@ class QueryRunTest extends TestCase
         $this->assertEquals('name1', $rows[0]['name']);
         $this->assertEquals('name10', $rows[1]['name']);
 
-        $query = new Query;
+        $query = new Query();
         $rowsUppercase = $query->from('customer')
             ->where(['LIKE', 'name', 'ME1'])
             ->all($connection);
@@ -291,6 +289,29 @@ class QueryRunTest extends TestCase
             ->where(['not', 'name', 'name1'])
             ->all($connection);
         $this->assertEquals(9, count($rows));
+
+        $query = new Query();
+        $rows = $query->from('customer')
+            ->where(['not', 'name', null])
+            ->all($connection);
+        $this->assertEquals(10, count($rows));
+    }
+
+    public function testExists()
+    {
+        $connection = $this->getConnection();
+
+        $query = new Query();
+        $exists = $query->from('customer')
+            ->where(['name' => 'name1'])
+            ->exists($connection);
+        $this->assertTrue($exists);
+
+        $query = new Query();
+        $exists = $query->from('customer')
+            ->where(['name' => 'un-existing-name'])
+            ->exists($connection);
+        $this->assertFalse($exists);
     }
 
     public function testModify()
@@ -317,23 +338,6 @@ class QueryRunTest extends TestCase
             ->where(['name' => 'not existing name'])
             ->modify(['$set' => ['name' => 'new name']], ['new' => false], $connection);
         $this->assertNull($row);
-    }
-
-    public function testOptions()
-    {
-        $connection = $this->getConnection();
-        $connection->getCollection('customer')->createIndex(['status' => 1]);
-
-        $query = new Query();
-        $rows = $query->from('customer')
-            ->options([
-                '$min' => [
-                    'status' => 9
-                ],
-            ])
-            ->all($connection);
-
-        $this->assertCount(2, $rows);
     }
 
     /**
@@ -379,7 +383,7 @@ class QueryRunTest extends TestCase
     public function testSelect()
     {
         $connection = $this->getConnection();
-        $query = new Query;
+        $query = new Query();
         $rows = $query->from('customer')
             ->select(['name' => true, '_id' => false])
             ->limit(1)
@@ -403,5 +407,198 @@ class QueryRunTest extends TestCase
         $this->assertEquals(3, count($rows));
         $this->assertEquals(3, $query->count('*', $connection));
         //$this->assertEquals('name1', $rows[0]['name']);
+    }
+}
+
+    public function testScalar()
+    {
+        $connection = $this->getConnection();
+
+        $result = (new Query())
+            ->select(['name' => true, '_id' => false])
+            ->from('customer')
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(1)
+            ->scalar($connection);
+        $this->assertSame('name1', $result);
+
+        $result = (new Query())
+            ->select(['name' => true, '_id' => false])
+            ->from('customer')
+            ->andWhere(['status' => -1])
+            ->scalar($connection);
+        $this->assertSame(false, $result);
+
+        $result = (new Query())
+            ->select(['name'])
+            ->from('customer')
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(1)
+            ->scalar($connection);
+        $this->assertSame('name1', $result);
+
+        $result = (new Query())
+            ->select(['_id'])
+            ->from('customer')
+            ->limit(1)
+            ->scalar($connection);
+        $this->assertTrue($result instanceof ObjectID);
+    }
+
+    public function testColumn()
+    {
+        $connection = $this->getConnection();
+
+        $result = (new Query())->from('customer')
+            ->select(['name' => true, '_id' => false])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->column($connection);
+        $this->assertEquals(['name1', 'name10'], $result);
+
+        $result = (new Query())->from('customer')
+            ->select(['name' => true, '_id' => false])
+            ->andWhere(['status' => -1])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->column($connection);
+        $this->assertEquals([], $result);
+
+        $result = (new Query())->from('customer')
+            ->select(['name'])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->column($connection);
+        $this->assertEquals(['name1', 'name10'], $result);
+
+        $result = (new Query())->from('customer')
+            ->select(['_id'])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->column($connection);
+        $this->assertTrue($result[0] instanceof ObjectID);
+        $this->assertTrue($result[1] instanceof ObjectID);
+    }
+
+    /**
+     * @depends testColumn
+     */
+    public function testColumnIndexBy()
+    {
+        $connection = $this->getConnection();
+
+        $result = (new Query())->from('customer')
+            ->select(['name'])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->indexBy('status')
+            ->column($connection);
+        $this->assertEquals([1 => 'name1', 10 => 'name10'], $result);
+
+        $result = (new Query())->from('customer')
+            ->select(['name', 'status'])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->indexBy(function ($row) {
+                return $row['status'] * 2;
+            })
+            ->column($connection);
+        $this->assertEquals([2 => 'name1', 20 => 'name10'], $result);
+
+        $result = (new Query())->from('customer')
+            ->select(['name'])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->indexBy('name')
+            ->column($connection);
+        $this->assertEquals(['name1' => 'name1', 'name10' => 'name10'], $result);
+    }
+
+    public function testEmulateExecution()
+    {
+        $query = new Query();
+        if (!$query->hasMethod('emulateExecution')) {
+            $this->markTestSkipped('"yii2" version 2.0.11 or higher required');
+        }
+
+        $db = $this->getConnection();
+
+        $this->assertGreaterThan(0, $query->from('customer')->count('*', $db));
+
+        $rows = (new Query())
+            ->from('customer')
+            ->emulateExecution()
+            ->all($db);
+        $this->assertSame([], $rows);
+
+        $row = (new Query())
+            ->from('customer')
+            ->emulateExecution()
+            ->one($db);
+        $this->assertSame(false, $row);
+
+        $exists = (new Query())
+            ->from('customer')
+            ->emulateExecution()
+            ->exists($db);
+        $this->assertSame(false, $exists);
+
+        $count = (new Query())
+            ->from('customer')
+            ->emulateExecution()
+            ->count('*', $db);
+        $this->assertSame(0, $count);
+
+        $sum = (new Query())
+            ->from('customer')
+            ->emulateExecution()
+            ->sum('id', $db);
+        $this->assertSame(0, $sum);
+
+        $sum = (new Query())
+            ->from('customer')
+            ->emulateExecution()
+            ->average('id', $db);
+        $this->assertSame(0, $sum);
+
+        $max = (new Query())
+            ->from('customer')
+            ->emulateExecution()
+            ->max('id', $db);
+        $this->assertSame(null, $max);
+
+        $min = (new Query())
+            ->from('customer')
+            ->emulateExecution()
+            ->min('id', $db);
+        $this->assertSame(null, $min);
+
+        $scalar = (new Query())
+            ->select(['id'])
+            ->from('customer')
+            ->emulateExecution()
+            ->scalar($db);
+        $this->assertSame(null, $scalar);
+
+        $column = (new Query())
+            ->select(['id'])
+            ->from('customer')
+            ->emulateExecution()
+            ->column($db);
+        $this->assertSame([], $column);
+
+        $row = (new Query())
+            ->select(['id'])
+            ->from('customer')
+            ->emulateExecution()
+            ->modify(['name' => 'new name'], [], $db);
+        $this->assertSame(null, $row);
+
+        $values = (new Query())
+            ->select(['id'])
+            ->from('customer')
+            ->emulateExecution()
+            ->distinct('name', $db);
+        $this->assertSame([], $values);
     }
 }

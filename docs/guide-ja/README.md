@@ -1,4 +1,4 @@
-Yii 2 MongoDb エクステンション
+Yii 2 MongoDB エクステンション
 ==============================
 
 このエクステンションは Yii 2 フレームワークに [MongoDB](http://www.mongodb.org/) との統合を提供します。
@@ -20,6 +20,7 @@ Yii 2 MongoDb エクステンション
 追加のトピック
 --------------
 
+* [ロギングとプロファイリング](topics-logging.md)
 * [キャッシュコンポーネントを使用する](topics-cache.md)
 * [セッションコンポーネントを使用する](topics-session.md)
 * [I18N メッセージソースを使用する](topics-i18n-message-source.md)
