@@ -352,7 +352,7 @@ class Query extends Component implements QueryInterface
 
         $pipelines = [];
         if ($this->where !== null) {
-            $pipelines[] = ['$match' => $collection->buildCondition($this->where)];
+            $pipelines[] = ['$match' => $db->getQueryBuilder()->buildCondition($this->where)];
         }
 
         $pipelines[] = [
