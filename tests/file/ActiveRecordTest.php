@@ -2,6 +2,7 @@
 
 namespace yiiunit\extensions\mongodb\file;
 
+use MongoDB\BSON\ObjectID;
 use Yii;
 use yii\helpers\FileHelper;
 use yiiunit\extensions\mongodb\TestCase;
@@ -10,7 +11,7 @@ use yiiunit\extensions\mongodb\data\ar\file\ActiveRecord;
 use yiiunit\extensions\mongodb\data\ar\file\CustomerFile;
 
 /**
- * @group mongodb
+ * @group file
  */
 class ActiveRecordTest extends TestCase
 {
@@ -138,7 +139,7 @@ class ActiveRecordTest extends TestCase
 
     public function testInsert()
     {
-        $record = new CustomerFile;
+        $record = new CustomerFile();
         $record->tag = 'new new';
         $record->status = 7;
 
@@ -146,7 +147,7 @@ class ActiveRecordTest extends TestCase
 
         $record->save();
 
-        $this->assertTrue($record->_id instanceof \MongoId);
+        $this->assertTrue($record->_id instanceof ObjectID);
         $this->assertFalse($record->isNewRecord);
 
         $fileContent = $record->getFileContent();
@@ -158,7 +159,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testInsertFile()
     {
-        $record = new CustomerFile;
+        $record = new CustomerFile();
         $record->tag = 'new new';
         $record->status = 7;
 
@@ -167,7 +168,7 @@ class ActiveRecordTest extends TestCase
 
         $record->save();
 
-        $this->assertTrue($record->_id instanceof \MongoId);
+        $this->assertTrue($record->_id instanceof ObjectID);
         $this->assertFalse($record->isNewRecord);
 
         $fileContent = $record->getFileContent();
@@ -179,7 +180,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testInsertFileContent()
     {
-        $record = new CustomerFile;
+        $record = new CustomerFile();
         $record->tag = 'new new';
         $record->status = 7;
 
@@ -188,7 +189,7 @@ class ActiveRecordTest extends TestCase
 
         $record->save();
 
-        $this->assertTrue($record->_id instanceof \MongoId);
+        $this->assertTrue($record->_id instanceof ObjectID);
         $this->assertFalse($record->isNewRecord);
 
         $fileContent = $record->getFileContent();
@@ -200,7 +201,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testUpdate()
     {
-        $record = new CustomerFile;
+        $record = new CustomerFile();
         $record->tag = 'new new';
         $record->status = 7;
         $record->save();
@@ -232,7 +233,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testUpdateFile()
     {
-        $record = new CustomerFile;
+        $record = new CustomerFile();
         $record->tag = 'new new';
         $record->status = 7;
         $newFileContent = 'Test new file content';
@@ -258,7 +259,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testUpdateFileContent()
     {
-        $record = new CustomerFile;
+        $record = new CustomerFile();
         $record->tag = 'new new';
         $record->status = 7;
         $newFileContent = 'Test new file content';
@@ -282,7 +283,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testWriteFile()
     {
-        $record = new CustomerFile;
+        $record = new CustomerFile();
         $record->tag = 'new new';
         $record->status = 7;
         $newFileContent = 'Test new file content';
@@ -304,7 +305,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testGetFileResource()
     {
-        $record = new CustomerFile;
+        $record = new CustomerFile();
         $record->tag = 'new new';
         $record->status = 7;
         $newFileContent = 'Test new file content';
@@ -321,5 +322,22 @@ class ActiveRecordTest extends TestCase
         $contents = stream_get_contents($fileResource);
         fclose($fileResource);
         $this->assertEquals($newFileContent, $contents);
+    }
+
+    /**
+     * @depends testInsert
+     *
+     * @see https://github.com/yiisoft/yii2-mongodb/pull/146
+     */
+    public function testInsertCustomId()
+    {
+        $record = new CustomerFile();
+        $record->_id = 'custom';
+        $record->tag = 'new new';
+        $record->status = 7;
+
+        $record->save(false);
+
+        $this->assertEquals('custom', $record->_id);
     }
 }

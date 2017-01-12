@@ -2,6 +2,9 @@
 
 namespace yiiunit\extensions\mongodb;
 
+use MongoDB\BSON\Binary;
+use MongoDB\BSON\ObjectID;
+use MongoDB\BSON\Regex;
 use yii\mongodb\ActiveQuery;
 use yiiunit\extensions\mongodb\data\ar\ActiveRecord;
 use yiiunit\extensions\mongodb\data\ar\Customer;
@@ -9,10 +12,6 @@ use yiiunit\extensions\mongodb\data\ar\Animal;
 use yiiunit\extensions\mongodb\data\ar\Dog;
 use yiiunit\extensions\mongodb\data\ar\Cat;
 
-
-/**
- * @group mongodb
- */
 class ActiveRecordTest extends TestCase
 {
     /**
@@ -48,8 +47,7 @@ class ActiveRecordTest extends TestCase
                 'status' => $i,
             ];
         }
-        $collection->batchInsert($rows);
-        $this->testRows = $rows;
+        $this->testRows = $collection->batchInsert($rows);
     }
 
     // Tests :
@@ -119,7 +117,7 @@ class ActiveRecordTest extends TestCase
 
     public function testInsert()
     {
-        $record = new Customer;
+        $record = new Customer();
         $record->name = 'new name';
         $record->email = 'new email';
         $record->address = 'new address';
@@ -129,7 +127,7 @@ class ActiveRecordTest extends TestCase
 
         $record->save();
 
-        $this->assertTrue($record->_id instanceof \MongoId);
+        $this->assertTrue($record->_id instanceof ObjectID);
         $this->assertFalse($record->isNewRecord);
     }
 
@@ -138,7 +136,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testUpdate()
     {
-        $record = new Customer;
+        $record = new Customer();
         $record->name = 'new name';
         $record->email = 'new email';
         $record->address = 'new address';
@@ -157,6 +155,7 @@ class ActiveRecordTest extends TestCase
         $this->assertFalse($record->isNewRecord);
         $record2 = Customer::findOne($record->_id);
         $this->assertEquals(9, $record2->status);
+        $this->assertEquals('new name', $record2->name);
 
         // updateAll
         $pk = ['_id' => $record->_id];
@@ -172,7 +171,7 @@ class ActiveRecordTest extends TestCase
     public function testDelete()
     {
         // delete
-        $record = new Customer;
+        $record = new Customer();
         $record->name = 'new name';
         $record->email = 'new email';
         $record->address = 'new address';
@@ -185,7 +184,7 @@ class ActiveRecordTest extends TestCase
         $this->assertNull($record);
 
         // deleteAll
-        $record = new Customer;
+        $record = new Customer();
         $record->name = 'new name';
         $record->email = 'new email';
         $record->address = 'new address';
@@ -227,7 +226,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testUpdateNestedAttribute()
     {
-        $record = new Customer;
+        $record = new Customer();
         $record->name = 'new name';
         $record->email = 'new email';
         $record->address = [
@@ -254,7 +253,7 @@ class ActiveRecordTest extends TestCase
      */
     public function testQueryByIntegerField()
     {
-        $record = new Customer;
+        $record = new Customer();
         $record->name = 'new name';
         $record->status = 7;
         $record->save();
@@ -266,6 +265,85 @@ class ActiveRecordTest extends TestCase
         $rowRefreshed = Customer::find()->where(['status' => $row->status])->one();
         $this->assertNotEmpty($rowRefreshed);
         $this->assertEquals(7, $rowRefreshed->status);
+    }
+
+    public function testExists()
+    {
+        $exists = Customer::find()
+            ->where(['name' => 'name1'])
+            ->exists();
+        $this->assertTrue($exists);
+
+        $exists = Customer::find()
+            ->where(['name' => 'not existing name'])
+            ->exists();
+        $this->assertFalse($exists);
+    }
+
+    public function testScalar()
+    {
+        $connection = $this->getConnection();
+
+        $result = Customer::find()
+            ->select(['name' => true, '_id' => false])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(1)
+            ->scalar($connection);
+        $this->assertSame('name1', $result);
+
+        $result = Customer::find()
+            ->select(['name' => true, '_id' => false])
+            ->andWhere(['status' => -1])
+            ->scalar($connection);
+        $this->assertSame(false, $result);
+
+        $result = Customer::find()
+            ->select(['name'])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(1)
+            ->scalar($connection);
+        $this->assertSame('name1', $result);
+
+        $result = Customer::find()
+            ->select(['_id'])
+            ->limit(1)
+            ->scalar($connection);
+        $this->assertTrue($result instanceof ObjectID);
+    }
+
+    public function testColumn()
+    {
+        $connection = $this->getConnection();
+
+        $result = Customer::find()
+            ->select(['name' => true, '_id' => false])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->column($connection);
+        $this->assertEquals(['name1', 'name10'], $result);
+
+        $result = Customer::find()
+            ->select(['name' => true, '_id' => false])
+            ->andWhere(['status' => -1])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->column($connection);
+        $this->assertEquals([], $result);
+
+        $result = Customer::find()
+            ->select(['name'])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->column($connection);
+        $this->assertEquals(['name1', 'name10'], $result);
+
+        $result = Customer::find()
+            ->select(['_id'])
+            ->orderBy(['name' => SORT_ASC])
+            ->limit(2)
+            ->column($connection);
+        $this->assertTrue($result[0] instanceof ObjectID);
+        $this->assertTrue($result[1] instanceof ObjectID);
     }
 
     public function testModify()
@@ -295,11 +373,15 @@ class ActiveRecordTest extends TestCase
         $record = new Customer();
         $record->save(false);
 
-        $this->assertTrue($record->_id instanceof \MongoId);
+        $this->assertTrue($record->_id instanceof ObjectID);
         $this->assertFalse($record->isNewRecord);
     }
-    
-    public function testPopulateRecordCallWhenQueryingOnParentClass() 
+
+    /**
+     * @depends testFind
+     * @depends testInsert
+     */
+    public function testPopulateRecordCallWhenQueryingOnParentClass()
     {
         (new Cat())->save(false);
         (new Dog())->save(false);
@@ -309,5 +391,131 @@ class ActiveRecordTest extends TestCase
 
         $animal = Animal::find()->where(['type' => Cat::className()])->one();
         $this->assertEquals('meow', $animal->getDoes());
+    }
+
+    /**
+     * @see https://github.com/yiisoft/yii2-mongodb/issues/79
+     */
+    public function testToArray()
+    {
+        $record = new Customer();
+        $record->name = 'test name';
+        $record->email = new Regex('[a-z]@[a-z]', 'i');
+        $record->address = new Binary('abcdef', Binary::TYPE_MD5);
+        $record->status = 1;
+        $record->file_id = new Binary('Test Binary', Binary::TYPE_GENERIC);;
+        $record->save(false);
+
+        $this->assertEquals($record->attributes, $record->toArray([], [], false));
+
+        $array = $record->toArray([], [], true);
+        $this->assertTrue(is_string($array['_id']));
+        $this->assertEquals('/[a-z]@[a-z]/i', $array['email']);
+        $this->assertEquals('abcdef', $array['address']);
+        $this->assertEquals('Test Binary', $array['file_id']);
+    }
+
+    /**
+     * @depends testInsert
+     *
+     * @see https://github.com/yiisoft/yii2-mongodb/pull/146
+     */
+    public function testInsertCustomId()
+    {
+        $record = new Customer();
+        $record->_id = 'custom';
+        $record->name = 'new name';
+        $record->email = 'new email';
+        $record->address = 'new address';
+        $record->status = 7;
+
+        $record->save(false);
+
+        $this->assertEquals('custom', $record->_id);
+    }
+
+    public function testEmulateExecution()
+    {
+        if (!Customer::find()->hasMethod('emulateExecution')) {
+            $this->markTestSkipped('"yii2" version 2.0.11 or higher required');
+        }
+
+        $this->assertGreaterThan(0, Customer::find()->from('customer')->count());
+
+        $rows = Customer::find()
+            ->from('customer')
+            ->emulateExecution()
+            ->all();
+        $this->assertSame([], $rows);
+
+        $row = Customer::find()
+            ->from('customer')
+            ->emulateExecution()
+            ->one();
+        $this->assertSame(null, $row);
+
+        $exists = Customer::find()
+            ->from('customer')
+            ->emulateExecution()
+            ->exists();
+        $this->assertSame(false, $exists);
+
+        $count = Customer::find()
+            ->from('customer')
+            ->emulateExecution()
+            ->count();
+        $this->assertSame(0, $count);
+
+        $sum = Customer::find()
+            ->from('customer')
+            ->emulateExecution()
+            ->sum('id');
+        $this->assertSame(0, $sum);
+
+        $sum = Customer::find()
+            ->from('customer')
+            ->emulateExecution()
+            ->average('id');
+        $this->assertSame(0, $sum);
+
+        $max = Customer::find()
+            ->from('customer')
+            ->emulateExecution()
+            ->max('id');
+        $this->assertSame(null, $max);
+
+        $min = Customer::find()
+            ->from('customer')
+            ->emulateExecution()
+            ->min('id');
+        $this->assertSame(null, $min);
+
+        $scalar = Customer::find()
+            ->select(['id'])
+            ->from('customer')
+            ->emulateExecution()
+            ->scalar();
+        $this->assertSame(null, $scalar);
+
+        $column = Customer::find()
+            ->select(['id'])
+            ->from('customer')
+            ->emulateExecution()
+            ->column();
+        $this->assertSame([], $column);
+
+        $row = Customer::find()
+            ->select(['id'])
+            ->from('customer')
+            ->emulateExecution()
+            ->modify(['name' => 'new name']);
+        $this->assertSame(null, $row);
+
+        $values = Customer::find()
+            ->select(['id'])
+            ->from('customer')
+            ->emulateExecution()
+            ->distinct('name');
+        $this->assertSame([], $values);
     }
 }

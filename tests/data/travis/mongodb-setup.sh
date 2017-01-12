@@ -2,20 +2,22 @@
 #
 # install mongodb
 
-if (php --version | grep -i HipHop > /dev/null); then
-  echo "mongodb does not work on HHVM currently, skipping"
-  exit 0
-else
-  echo "extension = mongo.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
-fi
+# MongoDB Server :
 
 echo "MongoDB Server version:"
 mongod --version
 
-echo "MongoDB PHP Extension version:"
-php -i |grep mongo -4 |grep -2 Version
+mongo yii2test --eval 'db.createUser({user: "travis", pwd: "test", roles: ["readWrite", "dbAdmin"]});'
 
-# enable text search
-mongo --eval 'db.adminCommand( { setParameter: true, textSearchEnabled : true})'
+# PHP Extension :
+
+if (php --version | grep -i HipHop > /dev/null); then
+  echo "skip PHP extension installation on HHVM"
+else
+  pecl install -f mongodb
+  echo "extension = mongodb.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
+  echo "MongoDB PHP Extension version:"
+  php -i |grep mongodb -4 |grep -2 version
+fi
 
 cat /etc/mongodb.conf

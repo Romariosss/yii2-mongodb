@@ -244,6 +244,9 @@ class MongoDbManagerTest extends TestCase
         $updateAnyPost->description = 'update any post';
         $this->auth->add($updateAnyPost);
 
+        $withoutChildren = $this->auth->createRole('withoutChildren');
+        $this->auth->add($withoutChildren);
+
         $reader = $this->auth->createRole('reader');
         $this->auth->add($reader);
         $this->auth->addChild($reader, $readPost);
@@ -307,6 +310,32 @@ class MongoDbManagerTest extends TestCase
         $roles = $this->auth->getRolesByUser(123);
         $this->assertTrue(reset($roles) instanceof Role);
         $this->assertEquals($roles['reader']->name, 'reader');
+    }
+
+    public function testGetChildRoles()
+    {
+        $this->prepareData();
+
+        $roles = $this->auth->getChildRoles('withoutChildren');
+        $this->assertCount(1, $roles);
+        $this->assertInstanceOf(Role::className(), reset($roles));
+        $this->assertTrue(reset($roles)->name === 'withoutChildren');
+
+        $roles = $this->auth->getChildRoles('reader');
+        $this->assertCount(1, $roles);
+        $this->assertInstanceOf(Role::className(), reset($roles));
+        $this->assertTrue(reset($roles)->name === 'reader');
+
+        $roles = $this->auth->getChildRoles('author');
+        $this->assertCount(2, $roles);
+        $this->assertArrayHasKey('author', $roles);
+        $this->assertArrayHasKey('reader', $roles);
+
+        $roles = $this->auth->getChildRoles('admin');
+        $this->assertCount(3, $roles);
+        $this->assertArrayHasKey('admin', $roles);
+        $this->assertArrayHasKey('author', $roles);
+        $this->assertArrayHasKey('reader', $roles);
     }
 
     public function testAssignMultipleRoles()

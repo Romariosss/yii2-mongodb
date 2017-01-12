@@ -3,7 +3,7 @@
 
 ## 必要条件
 
-このエクステンションは [MongoDB PHP 拡張](http://us1.php.net/manual/en/book.mongo.php) バージョン 1.5.0 以降を必要とします。
+このエクステンションは [MongoDB PHP 拡張](http://us1.php.net/manual/en/set.mongodb.php) バージョン 1.0.0 以降を必要とします。
 
 ## Composer パッケージを取得する
 
@@ -18,7 +18,7 @@ php composer.phar require --prefer-dist yiisoft/yii2-mongodb
 または、あなたの `composer.json` ファイルの `require` セクションに、下記を追加してください。
 
 ```
-"yiisoft/yii2-mongodb": "~2.0.0"
+"yiisoft/yii2-mongodb": "~2.1.0"
 ```
 
 ## アプリケーションを構成する

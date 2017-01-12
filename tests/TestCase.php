@@ -3,6 +3,7 @@
 namespace yiiunit\extensions\mongodb;
 
 use yii\helpers\ArrayHelper;
+use yii\helpers\FileHelper;
 use yii\mongodb\Connection;
 use Yii;
 use yii\mongodb\Exception;
@@ -26,8 +27,8 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
     protected function setUp()
     {
         parent::setUp();
-        if (!extension_loaded('mongo')) {
-            $this->markTestSkipped('mongo extension required.');
+        if (!extension_loaded('mongodb')) {
+            $this->markTestSkipped('mongodb extension required.');
         }
         $config = self::getParam('mongodb');
         if (!empty($config)) {
@@ -42,6 +43,7 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
             $this->mongodb->close();
         }
         $this->destroyApplication();
+        $this->removeTestFilePath();
     }
 
     /**
@@ -71,6 +73,7 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
             'id' => 'testapp',
             'basePath' => __DIR__,
             'vendorPath' => $this->getVendorPath(),
+            'runtimePath' => dirname(__DIR__) . '/runtime',
         ], $config));
     }
 
@@ -88,12 +91,12 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
      */
     protected function destroyApplication()
     {
-        \Yii::$app = null;
+        Yii::$app = null;
     }
 
     /**
-     * @param  boolean                 $reset whether to clean up the test database
-     * @param  boolean                 $open  whether to open test database
+     * @param  bool $reset whether to clean up the test database
+     * @param  bool $open  whether to open test database
      * @return \yii\mongodb\Connection
      */
     public function getConnection($reset = false, $open = true)
@@ -103,10 +106,14 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
         }
         $db = new Connection();
         $db->dsn = $this->mongoDbConfig['dsn'];
-        $db->defaultDatabaseName = $this->mongoDbConfig['defaultDatabaseName'];
+        if (isset($this->mongoDbConfig['defaultDatabaseName'])) {
+            $db->defaultDatabaseName = $this->mongoDbConfig['defaultDatabaseName'];
+        }
         if (isset($this->mongoDbConfig['options'])) {
             $db->options = $this->mongoDbConfig['options'];
         }
+        $db->enableLogging = true;
+        $db->enableProfiling = true;
         if ($open) {
             $db->open();
         }
@@ -123,7 +130,7 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
     {
         if ($this->mongodb) {
             try {
-                $this->mongodb->getCollection($name)->drop();
+                $this->mongodb->createCommand()->dropCollection($name);
             } catch (Exception $e) {
                 // shut down exception
             }
@@ -164,14 +171,46 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
     }
 
     /**
-     * Returns the Mongo server version.
-     * @return string Mongo server version.
+     * @return string test file path
      */
-    protected function getServerVersion()
+    protected function getTestFilePath()
     {
-        $connection = $this->getConnection();
-        $buildInfo = $connection->getDatabase()->executeCommand(['buildinfo' => true]);
+        return dirname(__DIR__) . '/runtime/test-tmp';
+    }
 
-        return $buildInfo['version'];
+    /**
+     * Ensures test file path exists.
+     * @return string test file path
+     */
+    protected function ensureTestFilePath()
+    {
+        $path = $this->getTestFilePath();
+        FileHelper::createDirectory($path);
+        return $path;
+    }
+
+    /**
+     * Removes the test file path.
+     */
+    protected function removeTestFilePath()
+    {
+        $path = $this->getTestFilePath();
+        FileHelper::removeDirectory($path);
+    }
+
+    /**
+     * Invokes a inaccessible method
+     * @param object $object
+     * @param string $method
+     * @param array $args
+     * @return mixed
+     * @since 2.1.3
+     */
+    protected function invokeMethod($object, $method, $args = [])
+    {
+        $reflection = new \ReflectionClass($object->className());
+        $method = $reflection->getMethod($method);
+        $method->setAccessible(true);
+        return $method->invokeArgs($object, $args);
     }
 }
