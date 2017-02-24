@@ -304,9 +304,16 @@ class Query extends Component implements QueryInterface
         $pipelines = $this->composeAggregatePipelines($db);
 
         if(!empty($this->limit) && $this->limit >=0) {
-            $pipelines[] = [
-                '$limit' => $this->limit,
-            ];
+            if(!empty($this->offset)) {
+                $pipelines[] = [
+                    '$limit' => $this->limit + $this->offset ,
+                ];
+            } else {
+                 $pipelines[] = [
+                    '$limit' => $this->limit ,
+                ];
+            }
+
         }
 
         if(!empty($this->offset) && $this->limit > 0) {
