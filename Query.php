@@ -280,18 +280,18 @@ class Query extends Component implements QueryInterface
             $pipelines[] = ['$match' => $collection->buildCondition($this->where)];
         }
 
+        if (!empty($this->orderBy)) {
+            $pipelines[] = [
+                '$sort' => $this->composeSort(),
+            ];
+        }
+
         $pipelines[] = [
             '$group' => ArrayHelper::merge(
                 ['_id' => $this->groupBy ],
                 $selectFields
             ),
         ];
-
-        if (!empty($this->orderBy)) {
-            $pipelines[] = [
-                '$sort' => $this->composeSort(),
-            ];
-        }
 
         return $pipelines;
 
@@ -309,7 +309,7 @@ class Query extends Component implements QueryInterface
                     '$limit' => $this->limit + $this->offset ,
                 ];
             } else {
-                 $pipelines[] = [
+                $pipelines[] = [
                     '$limit' => $this->limit ,
                 ];
             }
@@ -541,7 +541,7 @@ class Query extends Component implements QueryInterface
     {
         $this->groupBy = $idExpression;
         $this->select($fields);
-        
+
         return $this;
     }
 
