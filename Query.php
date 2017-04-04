@@ -293,6 +293,12 @@ class Query extends Component implements QueryInterface
             ),
         ];
 
+        if (!empty($this->orderBy)) {
+            $pipelines[] = [
+                '$sort' => $this->composeSort(),
+            ];
+        }
+
         return $pipelines;
 
     }
